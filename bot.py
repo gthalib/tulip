@@ -5,7 +5,8 @@ import sqlite3
 import asyncio
 from datetime import datetime, timedelta
 from dataclasses import dataclass, field
-from flask import Flask, request, jsonify
+from fastapi import FastAPI, Request, Query, BackgroundTasks
+from fastapi.responses import PlainTextResponse, JSONResponse
 from dotenv import load_dotenv
 from google import genai
 from openai import AsyncOpenAI
@@ -411,62 +412,61 @@ class WhatsAppBot:
         except Exception as e:
             logger.error(f"Failed to process message/reply: {e}")
 
-app = Flask(__name__)
+app = FastAPI()
 bot_config = Config()
 bot = WhatsAppBot(bot_config)
 
-@app.route("/webhook", methods=["GET"])
-async def verify():
-    mode = request.args.get("hub.mode")
-    token = request.args.get("hub.verify_token")
-    challenge = request.args.get("hub.challenge")
 
-    if mode == "subscribe" and token == bot_config.VERIFY_TOKEN:
+async def process_webhook(payload: dict):
+    try:
+        result = normalize_webhook(payload)
+        pn_id = result.phone_number_id or bot_config.PHONE_NUMBER_ID
+
+        if not result.messages and "data" in payload and isinstance(payload["data"], list):
+            for item in payload["data"]:
+                msg = item.get("message")
+                item_pn_id = item.get("phone_number_id")
+                if msg:
+                    await bot.handle_message(msg, item_pn_id or pn_id)
+        else:
+            for msg in result.messages:
+                await bot.handle_message(msg, pn_id)
+    except Exception as e:
+        logger.error(f"Background webhook processing error: {e}", exc_info=True)
+
+@app.get("/webhook")
+async def verify(
+    hub_mode: str = Query(None, alias="hub.mode"),
+    hub_token: str = Query(None, alias="hub.verify_token"),
+    hub_challenge: str = Query(None, alias="hub.challenge")
+):
+    if hub_mode == "subscribe" and hub_token == bot_config.VERIFY_TOKEN:
         logger.info("Webhook verified successfully")
-        return challenge, 200
+        return PlainTextResponse(hub_challenge, status_code=200)
     
     logger.warning("Webhook verification failed")
-    return "Forbidden", 403
+    return PlainTextResponse("Forbidden", status_code=403)
 
-@app.route("/webhook", methods=["POST"])
-async def webhook():
-    raw_body = request.get_data()
-    payload = request.get_json()
+@app.post("/webhook")
+async def webhook(request: Request, background_tasks: BackgroundTasks):
+    raw_body = await request.body()
+    payload = await request.json()
 
     if bot_config.APP_SECRET:
         signature = request.headers.get("X-Hub-Signature-256")
         if not verify_signature(app_secret=bot_config.APP_SECRET, raw_body=raw_body, signature_header=signature):
             logger.warning("Invalid webhook signature")
-            return "Invalid signature", 401
+            return PlainTextResponse("Invalid signature", status_code=401)
 
     logger.debug(f"Received raw payload:\n{json.dumps(payload, indent=2)}")
 
-    import threading
+    background_tasks.add_task(process_webhook, payload)
 
-    def start_background_task(p):
-        async def run_processing(p_inner):
-            try:
-                result = normalize_webhook(p_inner)
-                pn_id = result.phone_number_id or bot_config.PHONE_NUMBER_ID
-
-                if not result.messages and "data" in p_inner and isinstance(p_inner["data"], list):
-                    for item in p_inner["data"]:
-                        msg = item.get("message")
-                        item_pn_id = item.get("phone_number_id")
-                        if msg:
-                            await bot.handle_message(msg, item_pn_id or pn_id)
-                else:
-                    for msg in result.messages:
-                        await bot.handle_message(msg, pn_id)
-            except Exception as e:
-                logger.error(f"Background webhook processing error: {e}", exc_info=True)
-
-        asyncio.run(run_processing(p))
-
-    thread = threading.Thread(target=start_background_task, args=(payload,))
-    thread.start()
-
-    return jsonify({"status": "accepted"}), 202
+    return JSONResponse({"status": "accepted"}, status_code=202)
 
 if __name__ == "__main__":
-    app.run(port=bot_config.PORT, debug=bot_config.DEBUG)
+    import uvicorn
+    if bot_config.DEBUG:
+        uvicorn.run("bot:app", host="0.0.0.0", port=bot_config.PORT, reload=True)
+    else:
+        uvicorn.run(app, host="0.0.0.0", port=bot_config.PORT)
