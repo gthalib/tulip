@@ -1,0 +1,4 @@
+flask
+kapso-whatsapp-cloud-api
+python-dotenv
+google-genai
