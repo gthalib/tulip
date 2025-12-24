@@ -1,4 +1,5 @@
-flask
+fastapi
+uvicorn[standard]
 kapso-whatsapp-cloud-api
 python-dotenv
 google-genai
