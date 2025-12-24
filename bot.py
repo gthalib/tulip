@@ -16,7 +16,6 @@ load_dotenv()
 
 @dataclass
 class Config:
-    """Application configuration."""
     KAPSO_API_KEY: str = os.getenv("KAPSO_API_KEY")
     PHONE_NUMBER_ID: str = os.getenv("PHONE_NUMBER_ID")
     VERIFY_TOKEN: str = os.getenv("WEBHOOK_VERIFY_TOKEN", "123")
@@ -132,14 +131,14 @@ class DatabaseManager:
             return [row[0] for row in cursor.fetchall()]
 
     def add_to_whitelist(self, phone_number: str):
-            with sqlite3.connect(self.db_path) as conn:
-                conn.execute("INSERT OR IGNORE INTO whitelist (phone_number) VALUES (?)", (phone_number,))
-                conn.commit()
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("INSERT OR IGNORE INTO whitelist (phone_number) VALUES (?)", (phone_number,))
+            conn.commit()
 
     def remove_from_whitelist(self, phone_number: str):
-            with sqlite3.connect(self.db_path) as conn:
-                conn.execute("DELETE FROM whitelist WHERE phone_number = ?", (phone_number,))
-                conn.commit()
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("DELETE FROM whitelist WHERE phone_number = ?", (phone_number,))
+            conn.commit()
 
 @dataclass
 class Session:
@@ -200,8 +199,6 @@ class MealModule(Module):
         return ai_reply
 
 class WhatsAppBot:
-    """Main bot logic for handling WhatsApp events."""
-    
     def __init__(self, config: Config):
         self.config = config
         self.ai_processor = config.AI_PROCESSOR
@@ -366,19 +363,15 @@ class WhatsAppBot:
                 self.session_manager.save_session(session)
 
                 async def typing_refresher():
-                    """Keep the typing indicator active by refreshing it every 15 seconds."""
                     while True:
                         await asyncio.sleep(15)
-                        try:
-                            if message_id:
-                                logger.debug(f"Refreshing typing indicator for {from_number}")
-                                await client.messages.mark_read(
-                                    phone_number_id=phone_number_id,
-                                    message_id=message_id,
-                                    typing_indicator={"type": "text"}
-                                )
-                        except Exception as e:
-                            logger.debug(f"Failed to refresh typing indicator: {e}")
+                        if message_id:
+                            logger.debug(f"Refreshing typing indicator for {from_number}")
+                            await client.messages.mark_read(
+                                phone_number_id=phone_number_id,
+                                message_id=message_id,
+                                typing_indicator={"type": "text"}
+                            )
 
                 typing_task = asyncio.create_task(typing_refresher())
 
