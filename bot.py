@@ -394,9 +394,12 @@ class WhatsAppBot:
                         for act in actions:
                             reply_from_module = await module_handler.handle(session, message, new_submodule, intent, ai_reply, act)
 
+                    action_str = ", ".join([a.get("type", "unknown") for a in actions]) if actions else "None"
                     final_reply = (
                         f"Module: {session.active_module}\n"
+                        f"Submodule: {new_submodule}\n"
                         f"Intent: {intent}\n"
+                        f"Action: {action_str}\n"
                         f"Model: {model_name}\n\n"
                         f"{reply_from_module}"
                     )
