@@ -365,14 +365,17 @@ class WhatsAppBot:
 
                 async def typing_refresher():
                     while True:
-                        await asyncio.sleep(15)
                         if message_id:
-                            logger.debug(f"Refreshing typing indicator for {from_number}")
-                            await client.messages.mark_read(
-                                phone_number_id=phone_number_id,
-                                message_id=message_id,
-                                typing_indicator={"type": "text"}
-                            )
+                            try:
+                                logger.debug(f"Refreshing typing indicator for {from_number}")
+                                await client.messages.mark_read(
+                                    phone_number_id=phone_number_id,
+                                    message_id=message_id,
+                                    typing_indicator={"type": "text"}
+                                )
+                            except Exception as e:
+                                logger.warning(f"Failed to refresh typing indicator: {e}")
+                        await asyncio.sleep(5)
 
                 typing_task = asyncio.create_task(typing_refresher())
 
